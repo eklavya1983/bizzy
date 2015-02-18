@@ -1,3 +1,4 @@
+import models.Booking;
 import models.Business;
 import models.User;
 
@@ -42,4 +43,15 @@ public class TestUtils {
             return u;
         }
     }
+
+    static Booking createBooking(User user, Business business) {
+        Booking b = new Booking();
+        /* NOTE: We are setting both user and business.  All we really need to set are their
+         *  ids
+         */
+        b.setUser(user);
+        b.setBusiness(business);
+        return b;
+    }
+
 }

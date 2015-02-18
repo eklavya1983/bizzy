@@ -11,6 +11,10 @@ GET        /business/:id        controllers.Application.getBusiness(id: Long)
 PUT        /user                controllers.Application.addUser
 GET        /user/:id            controllers.Application.getUser(id: Long)
 
+PUT        /booking             controllers.Application.addBooking
+GET        /booking/:id         controllers.Application.getBooking(id: Long)
+
+GET        /search/bookings     controllers.Application.getBookingsForUser
 GET        /search              controllers.Application.search
 
 # Map static resources from the /public folder to the /assets URL path

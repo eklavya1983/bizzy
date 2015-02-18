@@ -1,6 +1,7 @@
 package controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import models.Booking;
 import models.Business;
 import models.Service;
 import models.User;
@@ -18,6 +19,9 @@ import javax.persistence.TypedQuery;
 import java.util.List;
 
 public class Application extends Controller {
+    public final static String USERID = "userId";
+    public final static String BUSINESSID = "businessId";
+    public final static String SERVICE_NAME = "serviceName";
 
     public static Result index() {
         return ok(index.render("Your new application is ready."));
@@ -86,10 +90,11 @@ public class Application extends Controller {
      * For now only supports searching by a given service name
      * @return
      */
+    @Transactional(readOnly = true)
     public static Result search() {
         // TODO(Rao): We need to make this more refined.  We need to support
         // search criteria multiple filters
-        String serviceName = request().getQueryString("serviceName");
+        String serviceName = request().getQueryString(SERVICE_NAME );
         TypedQuery<Service> query = JPA.em().createNamedQuery("Service.find", Service.class);
         query.setParameter("name", serviceName);
         List<Service> resultList = query.getResultList();
@@ -99,5 +104,51 @@ public class Application extends Controller {
             businessList = resultList.get(0).getBusinesses();
         }
         return Results.ok(Json.toJson(businessList));
+    }
+
+    /**
+     * Adds booking between a user and business
+     * @return
+     */
+    @Transactional
+    public static Result addBooking() {
+        /* Parse json body */
+        JsonNode jsonNode = request().body().asJson();
+        Booking booking = Json.fromJson(jsonNode, Booking.class);
+
+        /* Get the business and user entities based on the passed in Ids */
+        Business business =  JPA.em().find(Business.class, booking.getBusiness().getId());
+        User user =  JPA.em().find(User.class, booking.getUser().getId());
+
+        /* Replace passed user, business with JPA entities */
+        booking.setUser(user);
+        booking.setBusiness(business);
+        JPA.em().persist(booking);
+
+        return Results.ok(Json.toJson(booking.getId()));
+    }
+
+    /**
+     * Returns booking information based on booking id
+     * @param id
+     * @return
+     */
+    @Transactional(readOnly = true)
+    public static Result getBooking(long id) {
+        Booking booking = JPA.em().find(Booking.class, id);
+        return Results.ok(Json.toJson(booking));
+    }
+
+    /**
+     *
+     * @return bookings for user identified by user id
+     */
+    @Transactional(readOnly = true)
+    public static Result getBookingsForUser() {
+        long userId = Long.parseLong(request().getQueryString(USERID));
+        TypedQuery<Booking> query = JPA.em().createNamedQuery("Booking.findByUser", Booking.class);
+        query.setParameter("userId", userId);
+        List<Booking> bookingList = query.getResultList();
+        return Results.ok(Json.toJson(bookingList));
     }
 }

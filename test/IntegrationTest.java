@@ -1,4 +1,8 @@
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import controllers.Application;
+import models.Booking;
 import models.Business;
 import models.User;
 import org.junit.Assert;
@@ -6,6 +10,12 @@ import org.junit.Test;
 import play.libs.Json;
 import play.libs.ws.WS;
 import play.libs.ws.WSResponse;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import static play.test.Helpers.*;
 
@@ -24,6 +34,12 @@ public class IntegrationTest {
             testAddUser();
             /* Test searching service */
             testSearch();
+
+            /* test booking */
+            testBooking();
+
+            /* Test getBookingForUser for all the users */
+            testGetBookings();
         });
     }
 
@@ -79,15 +95,87 @@ public class IntegrationTest {
     }
 
     void testSearch() {
-//        /* Add a business with two services */
-//        for (String s : inMemBizzy.getServiceToBusinessTbl().keySet()) {
-//            WSResponse wsResponse = WS.url("http://localhost:3333/search")
-//                    .put(userNode)
-//                    .get(TestUtils.REQUEST_TIMEOUT_MS);
-//
-//            Assert.assertEquals(200, wsResponse.getStatus());
-//
-//        }
+        /* Add a business with two services */
+        for (String s : inMemBizzy.getServiceToBusinessTbl().keySet())
+            try {
+                /* Search for businesses matching service s */
+                WSResponse wsResponse = WS.url("http://localhost:3333/search")
+                        .setQueryParameter("serviceName", s)
+                        .get()
+                        .get(TestUtils.REQUEST_TIMEOUT_MS);
+
+                Assert.assertEquals(200, wsResponse.getStatus());
+
+                /* Parse out business list */
+                List<Business> businessList = null;
+                try {
+                    businessList = new ObjectMapper().readValue(wsResponse.asByteArray(), new TypeReference<List<Business>>() {});
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                /* Make sure every business exists */
+                Set<Business> actualSet = businessList.stream()
+                        .collect(Collectors.toCollection(() -> new TreeSet<Business>(InMemoryBizzy.businessComparator)));
+                Set<Business> expectedSet = inMemBizzy.getBusinesses(s);
+                Assert.assertTrue(actualSet.equals(expectedSet));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+    }
+
+    void testBooking() {
+        /* Create random booking */
+        Booking b = TestUtils.createBooking(inMemBizzy.getRandomUser(),
+                inMemBizzy.getRandomBusiness());
+        JsonNode bookingNode = Json.toJson(b);
+
+        /* Add booking */
+        WSResponse wsResponse = WS.url("http://localhost:3333/booking")
+                .put(bookingNode)
+                .get(TestUtils.REQUEST_TIMEOUT_MS);
+
+        /* Make sure booking is added */
+        Assert.assertEquals(200, wsResponse.getStatus());
+
+        /* Add to local in memory bizzy for another test */
+        JsonNode response = wsResponse.asJson();
+        b.setId(response.asLong());
+        inMemBizzy.addBooking(b);
+
+        /* Do a get on booking */
+        wsResponse = WS.url("http://localhost:3333/booking/" + b.getId())
+                .get()
+                .get(TestUtils.REQUEST_TIMEOUT_MS);
+
+        /* Get should succeed */
+        Assert.assertEquals(200, wsResponse.getStatus());
+        Booking retBooking = Json.fromJson(wsResponse.asJson(), Booking.class);
+        Assert.assertTrue(retBooking.equals(b));
+    }
+
+    void testGetBookings() {
+        for (Long uid : inMemBizzy.getUserTbl().keySet()) {
+            WSResponse wsResponse = WS.url("http://localhost:3333/search/bookings")
+                    .setQueryParameter(Application.USERID, String.valueOf(uid))
+                    .get()
+                    .get(TestUtils.REQUEST_TIMEOUT_MS);
+            /* Parse out booking list from the response */
+            List<Booking> actualBookings = null;
+            try {
+                actualBookings = new ObjectMapper().readValue(wsResponse.asByteArray(), new TypeReference<List<Booking>>() {});
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            /* Sort actual and expected */
+            List<Booking> expBookings = inMemBizzy.getBookingsForUser(uid);
+            actualBookings.sort((b1, b2) -> Long.valueOf(b1.getId()).compareTo(b2.getId()));
+            expBookings.sort((b1, b2) -> Long.valueOf(b1.getId()).compareTo(b2.getId()));
+
+            /* Compare */
+            Assert.assertEquals(expBookings, actualBookings);
+        }
     }
 
 }
